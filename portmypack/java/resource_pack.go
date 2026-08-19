@@ -61,19 +61,43 @@ func NewResourcePack(filePath string) (ResourcePack, error) {
 		logger.Debugf("error trying to find icon: %s", err)
 	}
 
-	pck.Items, err = image.DirectoryTexturesFS(r, texturesPath+"/items", true)
+	// Minecraft renamed these folders from the plural "items"/"blocks" to the
+	// singular "item"/"block" in the 1.13 flattening. Most packs in the wild
+	// today use the new names, but some legacy packs still use the old ones,
+	// so check both and merge whatever is found instead of hardcoding one.
+	pck.Items, err = directoryTexturesAny(r, texturesPath, []string{"item", "items"}, true)
 	if err != nil {
 		logger.Debugf("error trying to find items: %s", err)
 	}
-	pck.Blocks, err = image.DirectoryTexturesFS(r, texturesPath+"/blocks", false)
+	pck.Blocks, err = directoryTexturesAny(r, texturesPath, []string{"block", "blocks"}, false)
 	if err != nil {
-		logger.Debugf("error trying to find items: %s", err)
+		logger.Debugf("error trying to find blocks: %s", err)
 	}
 	pck.Armors, err = image.DirectoryTexturesFS(r, texturesPath+"/models/armor", false)
 	if err != nil {
-		logger.Debugf("error trying to find items: %s", err)
+		logger.Debugf("error trying to find armor: %s", err)
 	}
 
 	pck.r = r
 	return pck, nil
+}
+
+// directoryTexturesAny loads textures from the first of several candidate
+// subdirectory names that exists (or merges all that do), since Minecraft's
+// texture folder naming has changed across versions.
+func directoryTexturesAny(r *zip.Reader, texturesPath string, names []string, alphaFix bool) ([]image.Texture, error) {
+	var all []image.Texture
+	var lastErr error
+	for _, name := range names {
+		textures, err := image.DirectoryTexturesFS(r, texturesPath+"/"+name, alphaFix)
+		if err != nil {
+			lastErr = err
+			continue
+		}
+		all = append(all, textures...)
+	}
+	if len(all) == 0 && lastErr != nil {
+		return nil, lastErr
+	}
+	return all, nil
 }
