@@ -93,6 +93,25 @@
   }
   .status.error { color: var(--error); }
   .status.ok { color: var(--accent); }
+  .console {
+    margin-top: 16px;
+    background: #0a0c10;
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    padding: 10px 12px;
+    max-height: 160px;
+    overflow-y: auto;
+    font-family: "SF Mono", ui-monospace, Menlo, Consolas, monospace;
+    font-size: 12px;
+    line-height: 1.6;
+    display: none;
+  }
+  .console.show { display: block; }
+  .console .line { white-space: pre-wrap; word-break: break-word; }
+  .console .line .t { color: var(--muted); margin-right: 8px; }
+  .console .line.info { color: #a5b4cf; }
+  .console .line.ok { color: var(--accent); }
+  .console .line.error { color: var(--error); }
   footer {
     margin-top: 22px;
     text-align: center;
@@ -117,6 +136,7 @@
 
     <button id="convertBtn" disabled>Convert to Bedrock</button>
     <div class="status" id="status"></div>
+    <div class="console" id="console"></div>
 
     <footer>Built with <a href="https://github.com/restartfu/portmypack" target="_blank" rel="noopener">portmypack</a></footer>
   </div>
@@ -127,7 +147,26 @@
   const filenameEl = document.getElementById('filename');
   const convertBtn = document.getElementById('convertBtn');
   const statusEl = document.getElementById('status');
+  const consoleEl = document.getElementById('console');
   let selectedFile = null;
+
+  function log(msg, kind) {
+    consoleEl.classList.add('show');
+    const line = document.createElement('div');
+    line.className = 'line' + (kind ? ' ' + kind : '');
+    const t = document.createElement('span');
+    t.className = 't';
+    t.textContent = new Date().toLocaleTimeString([], { hour12: false });
+    line.appendChild(t);
+    line.appendChild(document.createTextNode(msg));
+    consoleEl.appendChild(line);
+    consoleEl.scrollTop = consoleEl.scrollHeight;
+  }
+
+  function clearLog() {
+    consoleEl.innerHTML = '';
+    consoleEl.classList.remove('show');
+  }
 
   function setFile(file) {
     if (!file) return;
@@ -140,6 +179,8 @@
     filenameEl.style.display = 'block';
     convertBtn.disabled = false;
     setStatus('', '');
+    clearLog();
+    log('Selected ' + file.name + ' (' + (file.size / 1024 / 1024).toFixed(2) + ' MB)', 'info');
   }
 
   function setStatus(msg, kind) {
@@ -171,6 +212,9 @@
     convertBtn.disabled = true;
     setStatus('Converting…', '');
 
+    const startedAt = performance.now();
+    log('Uploading to /api/convert …', 'info');
+
     try {
       const formData = new FormData();
       formData.append('pack', selectedFile);
@@ -180,10 +224,16 @@
         body: formData
       });
 
+      const elapsed = ((performance.now() - startedAt) / 1000).toFixed(1);
+
       if (!res.ok) {
         const text = await res.text();
+        log('Server responded ' + res.status + ' after ' + elapsed + 's', 'error');
+        if (text) log(text.trim(), 'error');
         throw new Error(text || ('Server error (' + res.status + ')'));
       }
+
+      log('Server responded 200 after ' + elapsed + 's — downloading result…', 'ok');
 
       const blob = await res.blob();
       const disposition = res.headers.get('Content-Disposition') || '';
@@ -199,8 +249,12 @@
       a.remove();
       URL.revokeObjectURL(url);
 
+      log('Downloaded ' + outName + ' (' + (blob.size / 1024 / 1024).toFixed(2) + ' MB)', 'ok');
       setStatus('Done — downloaded ' + outName, 'ok');
     } catch (err) {
+      if (err.name === 'TypeError') {
+        log('Network error — request never reached the server', 'error');
+      }
       setStatus(err.message || 'Something went wrong.', 'error');
     } finally {
       convertBtn.disabled = false;
