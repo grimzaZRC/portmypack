@@ -18,6 +18,15 @@ import (
 // containing a Java Edition resource pack .zip, converts it to Bedrock
 // (.mcpack) format, and streams the result back for download.
 func Handler(w http.ResponseWriter, r *http.Request) {
+	// Guard against any unexpected panic deep in the conversion library (e.g.
+	// an edge case in a pack's layout we haven't seen) so the client gets a
+	// real error message instead of an opaque 500 / FUNCTION_INVOCATION_FAILED.
+	defer func() {
+		if rec := recover(); rec != nil {
+			http.Error(w, fmt.Sprintf("conversion crashed: %v", rec), http.StatusInternalServerError)
+		}
+	}()
+
 	// CORS / preflight (harmless to keep even for same-origin use).
 	w.Header().Set("Access-Control-Allow-Origin", "*")
 	w.Header().Set("Access-Control-Allow-Methods", "POST, OPTIONS")
