@@ -88,10 +88,21 @@ func (pck ResourcePack) WriteZip(output string) error {
 		return errors.New("error generating manifest: " + err.Error())
 	}
 
-	pck.PackIcon.Write(w, "pack_icon.png")
+	// Single-texture fields (unlike the slice fields below) aren't guarded by
+	// writeTextures, so an empty/missing texture (e.g. a pack that doesn't
+	// override icons.png or particles.png — very common) would previously
+	// panic inside png.Encode on a nil image. Skip writing anything we never
+	// actually loaded.
+	if pck.PackIcon != (image.Texture{}) {
+		pck.PackIcon.Write(w, "pack_icon.png")
+	}
 	writeTextures(w, pck.CubeMaps, "textures/environment/overworld_cubemap")
-	pck.Icons.Write(w, "textures/gui/icons.png")
-	pck.Particles.Write(w, "textures/particle/particles.png")
+	if pck.Icons != (image.Texture{}) {
+		pck.Icons.Write(w, "textures/gui/icons.png")
+	}
+	if pck.Particles != (image.Texture{}) {
+		pck.Particles.Write(w, "textures/particle/particles.png")
+	}
 	writeTextures(w, pck.Items, "textures/items")
 	writeTextures(w, pck.Blocks, "textures/blocks")
 	writeTextures(w, pck.Armors, "textures/models/armor")
